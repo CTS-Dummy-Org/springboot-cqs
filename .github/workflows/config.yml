@@ -1,0 +1,51 @@
+name: quickstart-springboot-template build & deploy
+
+on:
+  push:
+  pull_request:
+    types: [opened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install JAVA JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: "oracle"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Cache Gradle Dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.gradle
+          key: v1-dependencies-${{ hashFiles('**/build.gradle') }}
+          restore-keys: |
+            v1-dependencies-
+
+      - name: Set Gradle Properties
+        run: |
+          echo "repository_url=${{ secrets.JFROG_ARTIFACTORY_URL }}" >> gradle.properties
+          echo "repousername=${{ secrets.ARTIFACTORY_USER }}" >> gradle.properties
+          echo "repopassword=${{ secrets.ARTIFACTORY_TOKEN }}" >> gradle.properties
+
+      - name: Download and Cache Dependencies
+        run: ./gradlew --console=plain dependencies
+
+      - name: Run JUnit Tests
+        run: ./gradlew --console=plain test
+
+      - name: Build Application
+        run: ./gradlew --console=plain assemble
+
+  deploy_to_dev:
+    if: startsWith(github.ref, 'refs/heads/develop') || startsWith(github.ref, 'refs/tags/develop') # eg: develop to run scan for develop branch
+    uses: ./.github/workflows/deployment.yml
+    needs: build
+    with:
+      environment: "dev"
+    secrets: inherit
